@@ -1,0 +1,59 @@
+#cloud-config
+
+# Base first-boot configuration for the Ubuntu Kubernetes worker image.
+# Supply Kubernetes cluster credentials separately; they must not be stored here.
+hostname: k8s-worker3
+manage_etc_hosts: true
+timezone: Etc/UTC
+
+ssh_pwauth: false
+disable_root: true
+
+package_update: true
+package_upgrade: false
+package_reboot_if_required: false
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - containerd
+  - curl
+  - gnupg
+  - openssh-server
+  - qemu-guest-agent
+  - net-tools
+  - wget
+  - vim
+  - unzip
+  - python3
+  - htop
+
+write_files:
+  - path: /etc/modules-load.d/kubernetes.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      overlay
+      br_netfilter
+
+  - path: /etc/sysctl.d/99-kubernetes-cri.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward = 1
+
+runcmd:
+  - [ bash, -c, "swapoff -a" ]
+  - [ bash, -c, "sed -ri '/[[:space:]]swap[[:space:]]/ s/^/#/' /etc/fstab" ]
+  - [ modprobe, overlay ]
+  - [ modprobe, br_netfilter ]
+  - [ sysctl, --system ]
+  - [ bash, -c, "containerd config default > /etc/containerd/config.toml" ]
+  - [ sed, -i, 's/SystemdCgroup = false/SystemdCgroup = true/', /etc/containerd/config.toml ]
+  - [ systemctl, enable, --now, containerd ]
+  - [ systemctl, enable, --now, qemu-guest-agent ]
+  - [ systemctl, enable, ssh ]
+  - [ systemctl, restart, ssh ]
+
+final_message: "Cloud-init completed for ${hostname} after $UPTIME seconds."
